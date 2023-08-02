@@ -14,18 +14,18 @@ public class GroupAnalyzer {
                 .max(Comparator.naturalOrder())
                 .orElse(Integer.MIN_VALUE);
 
-        List<List<CrossPoint>> crossPointsMatrix = getCrossPointsForAllColumns(maxLineSize, dataMatrix);
-        return getGroups(dataMatrix, crossPointsMatrix);
+        List<Map<Line, CrossPoint>> crossPointsByColumns = getCrossPointsForByAllColumns(maxLineSize, dataMatrix);
+        return getGroups(crossPointsByColumns);
     }
 
-    private List<List<CrossPoint>> getCrossPointsForAllColumns(int size, List<Line> dataMatrix) {
-        List<List<CrossPoint>> crossPointsMatrix = new ArrayList<>();
+    private List<Map<Line, CrossPoint>> getCrossPointsForByAllColumns(int size, List<Line> dataMatrix) {
+        List<Map<Line, CrossPoint>> crossPointsByColumns = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             List<Line> sortedList = sortByColumnNumberAndSize(dataMatrix, i);
-            List<CrossPoint> columnCrossPoints = getCrossPointsForColumn(sortedList, i);
-            crossPointsMatrix.add(columnCrossPoints);
+            Map<Line, CrossPoint> columnCrossPoints = getCrossPointsForColumn(sortedList, i);
+            crossPointsByColumns.add(columnCrossPoints);
         }
-        return crossPointsMatrix;
+        return crossPointsByColumns;
     }
 
     private List<Line> sortByColumnNumberAndSize(List<Line> data, int columnNumber) {
@@ -35,49 +35,68 @@ public class GroupAnalyzer {
                 .collect(Collectors.toList());
     }
 
-    private List<CrossPoint> getCrossPointsForColumn(List<Line> sortedData, int columnNumber) {
-        List<CrossPoint> crossPointList = new ArrayList<>();
+    private Map<Line, CrossPoint> getCrossPointsForColumn(List<Line> sortedData, int columnNumber) {
+        Map<Line, CrossPoint> crossPointMap = new HashMap<>();
         CrossPoint crossPoint = new CrossPoint(sortedData.get(0));
         for (int i = 1; i < sortedData.size(); i++) {
             Line previousLine = sortedData.get(i - 1);
             Line currentLine = sortedData.get(i);
             if (previousLine.getValue().get(columnNumber).equals(currentLine.getValue().get(columnNumber))
-                && !previousLine.getValue().get(columnNumber).equals(empty)) {
+                && !previousLine.getValue().get(columnNumber).equals(empty)
+                && !previousLine.getValue().get(columnNumber).isBlank()) {
                 crossPoint.getLines().add(currentLine);
             } else {
-                if (crossPoint.getLines().size() > 1) {
-                    crossPointList.add(crossPoint);
+                Set<Line> crossingLines = crossPoint.getLines();
+                if (crossingLines.size() > 1) {
+                    for (Line l : crossingLines) {
+                        crossPointMap.put(l, crossPoint);
+                    }
                 }
                 crossPoint = new CrossPoint(currentLine);
             }
         }
-        if (crossPoint.getLines().size() > 1) {
-            crossPointList.add(crossPoint);
+        Set<Line> crossingLines = crossPoint.getLines();
+        if (crossingLines.size() > 1) {
+            for (Line l : crossingLines) {
+                crossPointMap.put(l, crossPoint);
+            }
         }
-        return crossPointList;
+        return crossPointMap;
     }
 
-    private List<Group> getGroups(List<Line> dataMatrix, List<List<CrossPoint>> crossPointsMatrix) {
+    private List<Group> getGroups(List<Map<Line, CrossPoint>> crossPointsByColumns) {
+
+        Set<Line> allLines = crossPointsByColumns
+                .stream()
+                .flatMap((m) -> m.keySet().stream())
+                .collect(Collectors.toSet());
+
         List<Group> groups = new ArrayList<>();
         Set<Line> checked = new HashSet<>();
-        for (Line line : dataMatrix) {
+        for (Line line : allLines) {
+            if (checked.contains(line)) continue;
+
             Group group = new Group();
             Deque<Line> crawlDeque = new LinkedList<>();
+            Set<Line> dequeCache = new HashSet<>();
             crawlDeque.add(line);
+
             while (!crawlDeque.isEmpty()) {
                 Line current = crawlDeque.pollFirst();
                 if (checked.contains(current)) continue;
                 checked.add(current);
+
                 for (int i = 0; i < current.getValue().size(); i++) {
-                    for (CrossPoint crossPoint : crossPointsMatrix.get(i)) {
-                        if (crossPoint.getLines().contains(current)) {
-                            group.getLines().addAll(crossPoint.getLines());
-                            crawlDeque.addAll(crossPoint.getLines());
-                        }
+                    Map<Line, CrossPoint> map = crossPointsByColumns.get(i);
+                    if (map.containsKey(current)) {
+                        CrossPoint crossPoint = crossPointsByColumns.get(i).get(current);
+                        group.getLines().addAll(crossPoint.getLines());
                     }
                 }
+                List<Line> forAdd = group.getLines().stream().filter(l -> !dequeCache.contains(l)).toList();
+                crawlDeque.addAll(forAdd);
+                dequeCache.addAll(forAdd);
             }
-
             if (group.getLines().size() > 0) groups.add(group);
         }
         return groups;

@@ -37,6 +37,7 @@ public class FileUtils {
 
     public static boolean isValid(String[] stringArr) {
         for (String s : stringArr) {
+            if (s.isEmpty()) continue;
             if (!Pattern.matches("^\"[^\"]*\"$", s)) {
                 return false;
             }
