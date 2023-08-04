@@ -38,6 +38,7 @@ public class GroupAnalyzer {
     private Map<Line, CrossPoint> getCrossPointsForColumn(List<Line> sortedData, int columnNumber) {
         Map<Line, CrossPoint> crossPointMap = new HashMap<>();
         CrossPoint crossPoint = new CrossPoint(sortedData.get(0));
+
         for (int i = 1; i < sortedData.size(); i++) {
             Line previousLine = sortedData.get(i - 1);
             Line currentLine = sortedData.get(i);
@@ -85,6 +86,7 @@ public class GroupAnalyzer {
                 Line current = crawlDeque.pollFirst();
                 if (checked.contains(current)) continue;
                 checked.add(current);
+                dequeCache.add(current);
 
                 for (int i = 0; i < current.getValue().size(); i++) {
                     Map<Line, CrossPoint> map = crossPointsByColumns.get(i);
@@ -93,11 +95,15 @@ public class GroupAnalyzer {
                         group.getLines().addAll(crossPoint.getLines());
                     }
                 }
-                List<Line> forAdd = group.getLines().stream().filter(l -> !dequeCache.contains(l)).toList();
-                crawlDeque.addAll(forAdd);
-                dequeCache.addAll(forAdd);
+
+                if (crawlDeque.isEmpty()) {
+                    Set<Line> forAdd = new HashSet<>(group.getLines());
+                    forAdd.removeIf(dequeCache::contains);
+                    crawlDeque.addAll(forAdd);
+                }
             }
-            if (group.getLines().size() > 0) groups.add(group);
+
+            groups.add(group);
         }
         return groups;
     }
