@@ -24,7 +24,7 @@ public class FileUtils {
                     cache.add(string);
                     String[] split = string.split(delimiter);
                     if (isValid(split)) {
-                        Line line = new Line(split);
+                        Line line = new Line(string);
                         data.add(line);
                     }
                 }
@@ -54,12 +54,8 @@ public class FileUtils {
             builder.append("Группа ").append(i + 1);
 
             for (Line line : groups.get(i).getLines()) {
-                List<String> words = line.getValue();
                 builder.append("\n\n");
-                for (int j = 0; j < words.size(); j++) {
-                    if (j > 0) builder.append(";");
-                    builder.append(words.get(j));
-                }
+                builder.append(line.value());
             }
         }
         builder.append("\n");

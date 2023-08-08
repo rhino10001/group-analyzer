@@ -1,110 +1,65 @@
 package com.github.rhino10001.unosoft;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class GroupAnalyzer {
 
-    private final String empty = "\"\"";
+    private static final String EMPTY_QUOTES = "\"\"";
 
-    public List<Group> getGroupList(List<Line> dataMatrix) {
+    public List<Group> getGroupList(List<Line> lines) {
 
-        int maxLineSize = dataMatrix.stream()
-                .map((line -> line.getValue().size()))
-                .max(Comparator.naturalOrder())
-                .orElse(Integer.MIN_VALUE);
+        List<Group> groupList = new ArrayList<>();
 
-        List<Map<Line, CrossPoint>> crossPointsByColumns = getCrossPointsForByAllColumns(maxLineSize, dataMatrix);
-        return getGroups(crossPointsByColumns);
-    }
+        List<Map<String, Integer>> crossPointsByColumns = new ArrayList<>();
+        Map<Integer, Integer> mergeHistoryChain = new HashMap<>();
 
-    private List<Map<Line, CrossPoint>> getCrossPointsForByAllColumns(int size, List<Line> dataMatrix) {
-        List<Map<Line, CrossPoint>> crossPointsByColumns = new ArrayList<>();
-        for (int i = 0; i < size; i++) {
-            List<Line> sortedList = sortByColumnNumberAndSize(dataMatrix, i);
-            Map<Line, CrossPoint> columnCrossPoints = getCrossPointsForColumn(sortedList, i);
-            crossPointsByColumns.add(columnCrossPoints);
-        }
-        return crossPointsByColumns;
-    }
+        for (Line line : lines) {
 
-    private List<Line> sortByColumnNumberAndSize(List<Line> data, int columnNumber) {
-        return data.stream()
-                .filter((l) -> l.getValue().size() > columnNumber)
-                .sorted(Comparator.comparing(l -> l.getValue().get(columnNumber)))
-                .collect(Collectors.toList());
-    }
+            TreeSet<Integer> indexesOfGroupsToMerge = new TreeSet<>();
+            Map<Integer, String> newCrossPoints = new HashMap<>();
 
-    private Map<Line, CrossPoint> getCrossPointsForColumn(List<Line> sortedData, int columnNumber) {
-        Map<Line, CrossPoint> crossPointMap = new HashMap<>();
-        CrossPoint crossPoint = new CrossPoint(sortedData.get(0));
+            String[] split = line.value().split(";");
+            for (int i = 0; i < split.length; i++) {
+                String word = split[i];
+                if (crossPointsByColumns.size() == i) crossPointsByColumns.add(new HashMap<>());
+                if (word.equals(EMPTY_QUOTES) || word.isBlank()) continue;
 
-        for (int i = 1; i < sortedData.size(); i++) {
-            Line previousLine = sortedData.get(i - 1);
-            Line currentLine = sortedData.get(i);
-            if (previousLine.getValue().get(columnNumber).equals(currentLine.getValue().get(columnNumber))
-                && !previousLine.getValue().get(columnNumber).equals(empty)
-                && !previousLine.getValue().get(columnNumber).isBlank()) {
-                crossPoint.getLines().add(currentLine);
+                Map<String, Integer> currentColumnCrossPoints = crossPointsByColumns.get(i);
+                Integer rootGroupIndex = currentColumnCrossPoints.get(word);
+                if (rootGroupIndex != null) {
+                    while (mergeHistoryChain.containsKey(rootGroupIndex)) {
+                        rootGroupIndex = mergeHistoryChain.get(rootGroupIndex);
+                    }
+                    indexesOfGroupsToMerge.add(rootGroupIndex);
+                } else {
+                    newCrossPoints.put(i, word);
+                }
+            }
+
+            int destGroupIndex;
+            if (indexesOfGroupsToMerge.isEmpty()) {
+                groupList.add(new Group());
+                destGroupIndex = groupList.size() - 1;
             } else {
-                Set<Line> crossingLines = crossPoint.getLines();
-                if (crossingLines.size() > 1) {
-                    for (Line l : crossingLines) {
-                        crossPointMap.put(l, crossPoint);
-                    }
-                }
-                crossPoint = new CrossPoint(currentLine);
-            }
-        }
-        Set<Line> crossingLines = crossPoint.getLines();
-        if (crossingLines.size() > 1) {
-            for (Line l : crossingLines) {
-                crossPointMap.put(l, crossPoint);
-            }
-        }
-        return crossPointMap;
-    }
-
-    private List<Group> getGroups(List<Map<Line, CrossPoint>> crossPointsByColumns) {
-
-        Set<Line> allLines = crossPointsByColumns
-                .stream()
-                .flatMap((m) -> m.keySet().stream())
-                .collect(Collectors.toSet());
-
-        List<Group> groups = new ArrayList<>();
-        Set<Line> checked = new HashSet<>();
-        for (Line line : allLines) {
-            if (checked.contains(line)) continue;
-
-            Group group = new Group();
-            Deque<Line> crawlDeque = new LinkedList<>();
-            Set<Line> dequeCache = new HashSet<>();
-            crawlDeque.add(line);
-
-            while (!crawlDeque.isEmpty()) {
-                Line current = crawlDeque.pollFirst();
-                if (checked.contains(current)) continue;
-                checked.add(current);
-                dequeCache.add(current);
-
-                for (int i = 0; i < current.getValue().size(); i++) {
-                    Map<Line, CrossPoint> map = crossPointsByColumns.get(i);
-                    if (map.containsKey(current)) {
-                        CrossPoint crossPoint = crossPointsByColumns.get(i).get(current);
-                        group.getLines().addAll(crossPoint.getLines());
-                    }
-                }
-
-                if (crawlDeque.isEmpty()) {
-                    Set<Line> forAdd = new HashSet<>(group.getLines());
-                    forAdd.removeIf(dequeCache::contains);
-                    crawlDeque.addAll(forAdd);
-                }
+                destGroupIndex = indexesOfGroupsToMerge.first();
             }
 
-            groups.add(group);
+            indexesOfGroupsToMerge.stream()
+                    .filter(i -> i != destGroupIndex)
+                    .forEach((i) -> {
+                        mergeHistoryChain.put(i, destGroupIndex);
+                        groupList.get(destGroupIndex).getLines().addAll(groupList.get(i).getLines());
+                        groupList.set(i, null);
+                    });
+
+            newCrossPoints.forEach((i, s) -> {
+                crossPointsByColumns.get(i).put(s, destGroupIndex);
+            });
+
+            groupList.get(destGroupIndex).getLines().add(line);
         }
-        return groups;
+
+        groupList.removeAll(Collections.singleton(null));
+        return groupList;
     }
 }
